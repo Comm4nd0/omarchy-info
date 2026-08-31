@@ -2,6 +2,8 @@ const test = require("node:test")
 const assert = require("node:assert")
 const Model = require("../Model.js")
 
+const SELF = "marco.omarchy-info"
+
 test("effectiveCards: empty selection means all applicable", () => {
   const all = Model.effectiveCards([], { hasBattery: true, hasDocker: true })
   assert.deepStrictEqual(all, Model.ALL_CARDS)
@@ -252,6 +254,33 @@ test("upcomingEvents: timed, future, deduped, sorted, capped", () => {
   const out = Model.upcomingEvents(doc, now, 3)
   assert.deepStrictEqual(out.map((e) => e.title), ["Later", "Conf", "Tomorrow"])
   assert.deepStrictEqual(Model.upcomingEvents({}, now, 3), [])
+})
+
+test("parseShortcutHint: lua bind form", () => {
+  const text = 'o.bind("SUPER + I", "OmarchyInfo", "omarchy-shell shell toggle marco.omarchy-info")'
+  assert.strictEqual(Model.parseShortcutHint(text, SELF), "Super + I")
+})
+
+test("parseShortcutHint: classic conf form, multiple mods", () => {
+  const text = "bindd = SUPER SHIFT, i, OmarchyInfo, exec, omarchy-shell shell toggle marco.omarchy-info"
+  assert.strictEqual(Model.parseShortcutHint(text, SELF), "Super + Shift + I")
+})
+
+test("parseShortcutHint: comments and other modules skipped", () => {
+  const text = [
+    '-- o.bind("SUPER + X", "Old", "omarchy-shell shell toggle marco.omarchy-info")',
+    '# bind = SUPER, X, exec, omarchy-shell shell toggle marco.omarchy-info',
+    'o.bind("SUPER + P", "Power", "omarchy-shell shell toggle omarchy.power")',
+    'o.bind("SUPER + I", "OmarchyInfo", "omarchy-shell shell toggle marco.omarchy-info")'
+  ].join("\n")
+  assert.strictEqual(Model.parseShortcutHint(text, SELF), "Super + I")
+})
+
+test("parseShortcutHint: unresolvable $variable and no match yield empty", () => {
+  const varLine = "bind = $mainMod, I, exec, omarchy-shell shell toggle marco.omarchy-info"
+  assert.strictEqual(Model.parseShortcutHint(varLine, SELF), "")
+  assert.strictEqual(Model.parseShortcutHint("", SELF), "")
+  assert.strictEqual(Model.parseShortcutHint("random noise", SELF), "")
 })
 
 test("clampPct bounds values", () => {

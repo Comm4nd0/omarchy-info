@@ -401,6 +401,44 @@ function upcomingEvents(doc, nowMs, limit) {
   return out.slice(0, Math.max(1, limit || 3))
 }
 
+// Keybinding hint for the panel header. The bind lives in the user's own
+// hypr config (hyprctl compiles lua binds to opaque __lua args, so the files
+// are the only place the command string survives); the probe greps
+// ~/.config/hypr for the toggle command and this parses the first real bind
+// line, in either syntax:
+//   o.bind("SUPER + I", "OmarchyInfo", "omarchy-shell shell toggle <id>")
+//   bindd = SUPER, I, OmarchyInfo, exec, omarchy-shell shell toggle <id>
+// Returns "" when nothing parseable is bound — the header just omits the hint.
+function parseShortcutHint(text, moduleId) {
+  var lines = String(text || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (line === "" || line.indexOf("--") === 0 || line.indexOf("#") === 0) continue
+    if (line.indexOf("toggle " + moduleId) === -1) continue
+    var lua = line.match(/\bbind\(\s*"([^"]+)"/)
+    if (lua) return formatKeyCombo(lua[1].split("+"))
+    var conf = line.match(/^bind[a-z]*\s*=\s*([^,]*),([^,]+),/)
+    if (conf) return formatKeyCombo(conf[1].trim().split(/\s+/).concat(conf[2].trim()))
+  }
+  return ""
+}
+
+// "SUPER" -> "Super", "i" -> "I"; mixed-case tokens (XF86…) pass through.
+// A $variable can't be resolved here, so the whole combo is dropped rather
+// than shown half-wrong.
+function formatKeyCombo(parts) {
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var p = String(parts[i]).trim()
+    if (p === "") continue
+    if (p.indexOf("$") !== -1) return ""
+    out.push(p === p.toUpperCase() || p === p.toLowerCase()
+      ? p.charAt(0).toUpperCase() + p.substring(1).toLowerCase()
+      : p)
+  }
+  return out.join(" + ")
+}
+
 function clampPct(v) {
   var n = Number(v)
   if (!isFinite(n)) return 0
@@ -429,6 +467,7 @@ if (typeof module !== "undefined") {
     parseProfiles: parseProfiles,
     formatAge: formatAge,
     upcomingEvents: upcomingEvents,
+    parseShortcutHint: parseShortcutHint,
     clampPct: clampPct
   }
 }

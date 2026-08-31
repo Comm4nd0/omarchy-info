@@ -192,6 +192,24 @@ Panel {
     if (!togglesProc.running) togglesProc.running = true
   }
 
+  // Keybinding hint for the header, so the shortcut is discoverable from the
+  // panel itself. The bind is the user's own hypr config line (hyprctl
+  // compiles lua binds to opaque args), so grep the config for the toggle
+  // command and let Model.parseShortcutHint pull the combo out. Re-probed on
+  // each open — a binding added while the shell runs shows up next click.
+  property string shortcutHint: ""
+
+  Process {
+    id: shortcutProc
+    command: ["grep", "-rhs", "--include=*.lua", "--include=*.conf",
+      "toggle " + root.moduleName,
+      (Quickshell.env("HOME") || "") + "/.config/hypr"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.shortcutHint = Model.parseShortcutHint(text, root.moduleName)
+    }
+  }
+
   // The calendar sync timer rewrites this file every few minutes; watching it
   // is free and needs no polling at all.
   FileView {
@@ -251,7 +269,10 @@ Panel {
   }
 
   onOpenedChanged: {
-    if (opened) { refresh(); refreshSlow(false); otherPlugins = computeOtherPlugins() }
+    if (opened) {
+      refresh(); refreshSlow(false); otherPlugins = computeOtherPlugins()
+      if (!shortcutProc.running) shortcutProc.running = true
+    }
     else settingsOpen = false
   }
   // Card availability can change while open (e.g. the docker probe failing
@@ -312,6 +333,18 @@ Panel {
             foreground: root.bar ? root.bar.foreground : Color.foreground
             fontFamily: root.bar ? root.bar.fontFamily : ""
             anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Text {
+            visible: !root.settingsOpen && root.shortcutHint !== ""
+            text: root.shortcutHint
+            color: root.bar ? root.bar.foreground : Color.foreground
+            opacity: 0.45
+            font.family: root.bar ? root.bar.fontFamily : ""
+            font.pixelSize: Style.font.caption
+            anchors.left: headerTitle.right
+            anchors.leftMargin: Style.space(8)
             anchors.verticalCenter: parent.verticalCenter
           }
 
