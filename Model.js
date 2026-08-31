@@ -1,10 +1,29 @@
 // Pure JS logic for OmarchyInfo — no QML types so the whole file runs under
 // `node --test tests/` as well as inside the shell.
 
-var ALL_CARDS = ["network", "audio", "bluetooth", "battery", "stats", "docker", "media",
-  "weather", "calendar", "agents", "layouts", "plugins"]
+// One catalog drives the card grid, the in-panel settings editor, and the
+// manifest multiselect (kept in step by hand there).
+var CARD_OPTIONS = [
+  { id: "settings", label: "Quick settings", glyph: "󰒓" },
+  { id: "network", label: "Network", glyph: "󰖩" },
+  { id: "audio", label: "Audio", glyph: "󰕾" },
+  { id: "bluetooth", label: "Bluetooth", glyph: "󰂯" },
+  { id: "battery", label: "Battery & power", glyph: "󰁹" },
+  { id: "stats", label: "CPU / RAM / Disk", glyph: "󰍛" },
+  { id: "docker", label: "Docker containers", glyph: "󰡨" },
+  { id: "media", label: "Now playing", glyph: "󰝚" },
+  { id: "weather", label: "Weather", glyph: "󰖐" },
+  { id: "calendar", label: "Calendar", glyph: "󰃭" },
+  { id: "agents", label: "AI agents", glyph: "󱚝" },
+  { id: "layouts", label: "Workspace layouts", glyph: "󱂬" },
+  { id: "plugins", label: "Plugin manager", glyph: "󱓓" }
+]
+
+var ALL_CARDS = []
+for (var _i = 0; _i < CARD_OPTIONS.length; _i++) ALL_CARDS.push(CARD_OPTIONS[_i].id)
 
 var CARD_SOURCES = {
+  settings: "cards/SettingsCard.qml",
   network: "cards/NetworkCard.qml",
   audio: "cards/AudioCard.qml",
   bluetooth: "cards/BluetoothCard.qml",
@@ -22,6 +41,7 @@ var CARD_SOURCES = {
 // Plugins already represented by a curated card. When the card is enabled the
 // plugin is dropped from the "other plugins" rows so it isn't listed twice.
 var CARD_COVERAGE = {
+  settings: [],
   network: ["omarchy.network"],
   audio: ["omarchy.audio"],
   bluetooth: ["omarchy.bluetooth"],
@@ -58,6 +78,78 @@ function effectiveCards(selected, caps) {
   return out
 }
 
+// Whether a card is part of the current selection (empty selection = all).
+function cardShown(selected, id) {
+  return !Array.isArray(selected) || selected.length === 0 || selected.indexOf(id) !== -1
+}
+
+// Toggle one card in the `cards` selection. An empty selection means "all",
+// so the first removal materializes the current list (preserving any custom
+// order). Removing the last card is refused — an empty result would read as
+// "all" again — and re-checking the full set normalizes back to [] so cards
+// added in future versions stay included by default.
+function toggleCardSelection(selected, id) {
+  if (ALL_CARDS.indexOf(id) === -1) return selected
+  var current = []
+  if (Array.isArray(selected) && selected.length > 0) {
+    for (var i = 0; i < selected.length; i++) {
+      var c = String(selected[i])
+      if (ALL_CARDS.indexOf(c) !== -1 && current.indexOf(c) === -1) current.push(c)
+    }
+  } else {
+    current = ALL_CARDS.slice()
+  }
+  var idx = current.indexOf(id)
+  if (idx !== -1) {
+    if (current.length === 1) return current
+    current.splice(idx, 1)
+  } else {
+    current.push(id)
+    if (current.length === ALL_CARDS.length) return []
+  }
+  return current
+}
+
+// Masonry placement: each card lands in the currently shortest column, which
+// closes the vertical gaps a row-aligned grid leaves under short cards.
+// heights in, {positions: [{column, y}], height} out — pure math so the QML
+// side only assigns x/y.
+function masonryLayout(heights, columns, gutter) {
+  columns = Math.max(1, Math.floor(columns) || 1)
+  gutter = Number(gutter) || 0
+  var colH = []
+  for (var c = 0; c < columns; c++) colH.push(0)
+  var positions = []
+  for (var i = 0; i < heights.length; i++) {
+    var best = 0
+    for (var c2 = 1; c2 < columns; c2++) {
+      if (colH[c2] < colH[best] - 0.5) best = c2
+    }
+    positions.push({ column: best, y: colH[best] })
+    colH[best] += Number(heights[i]) + gutter
+  }
+  var total = 0
+  for (var c3 = 0; c3 < columns; c3++) total = Math.max(total, colH[c3])
+  return { positions: positions, height: Math.max(0, total - gutter) }
+}
+
+// Row-aligned placement: classic grid, each row as tall as its tallest card.
+function gridLayout(heights, columns, gutter) {
+  columns = Math.max(1, Math.floor(columns) || 1)
+  gutter = Number(gutter) || 0
+  var positions = []
+  var y = 0
+  for (var i = 0; i < heights.length; i += columns) {
+    var rowH = 0
+    for (var j = i; j < Math.min(i + columns, heights.length); j++) {
+      positions.push({ column: j - i, y: y })
+      rowH = Math.max(rowH, Number(heights[j]))
+    }
+    y += rowH + gutter
+  }
+  return { positions: positions, height: Math.max(0, y - gutter) }
+}
+
 // Rows for enabled bar-widget plugins not already covered by a curated card.
 // isEnabledFn keeps registry logic out of here (and mockable in tests).
 function otherPluginRows(installedPlugins, enabledCards, selfId, isEnabledFn) {
@@ -81,6 +173,45 @@ function otherPluginRows(installedPlugins, enabledCards, selfId, isEnabledFn) {
     })
   }
   rows.sort(function(a, b) { return a.displayName.localeCompare(b.displayName) })
+  return rows
+}
+
+// Flag-file backed quick-settings toggles. Omarchy stores these as "-off"
+// flag files under ~/.local/state/omarchy/toggles/, so a present flag means
+// the feature is disabled. The crash-capture row goes through its wrapper
+// because that also stops/starts the watcher unit.
+var FLAG_TOGGLES = [
+  { key: "screensaver", label: "Screensaver", glyph: "󱄄",
+    stateKey: "screensaver-off", cmd: ["omarchy-toggle", "screensaver-off"] },
+  { key: "suspend", label: "Suspend in menu", glyph: "󰒲",
+    stateKey: "suspend-off", cmd: ["omarchy-toggle", "suspend-off"] },
+  { key: "crash-capture", label: "Crash capture", glyph: "󱚡",
+    stateKey: "crash-capture-off", cmd: ["omarchy-toggle-crash-capture"] }
+]
+
+var INPUT_TOGGLES = [
+  { key: "touchpad", label: "Touchpad", glyph: "󰟸", cmd: ["omarchy-toggle-touchpad", "toggle"] },
+  { key: "touchscreen", label: "Touchscreen", glyph: "󰝁", cmd: ["omarchy-toggle-touchscreen", "toggle"] }
+]
+
+// Quick-settings rows for the toggles the shell has no live service for,
+// derived from the probe's key/value output (parseKeyValue). Rows whose
+// state key is absent are dropped — the probe hasn't reported yet. Input
+// devices additionally require a `<kind>-present` report so a desktop
+// without a touchpad never shows a dead switch.
+function flagToggleRows(kv) {
+  kv = kv || {}
+  var rows = []
+  for (var i = 0; i < FLAG_TOGGLES.length; i++) {
+    var t = FLAG_TOGGLES[i]
+    if (kv[t.stateKey] === undefined) continue
+    rows.push({ key: t.key, label: t.label, glyph: t.glyph, checked: kv[t.stateKey] !== "1", cmd: t.cmd })
+  }
+  for (var j = 0; j < INPUT_TOGGLES.length; j++) {
+    var d = INPUT_TOGGLES[j]
+    if (kv[d.key + "-present"] !== "1") continue
+    rows.push({ key: d.key, label: d.label, glyph: d.glyph, checked: kv[d.key + "-disabled"] !== "1", cmd: d.cmd })
+  }
   return rows
 }
 
@@ -279,9 +410,15 @@ function clampPct(v) {
 if (typeof module !== "undefined") {
   module.exports = {
     ALL_CARDS: ALL_CARDS,
+    CARD_OPTIONS: CARD_OPTIONS,
     CARD_COVERAGE: CARD_COVERAGE,
     cardSource: cardSource,
     effectiveCards: effectiveCards,
+    cardShown: cardShown,
+    toggleCardSelection: toggleCardSelection,
+    masonryLayout: masonryLayout,
+    gridLayout: gridLayout,
+    flagToggleRows: flagToggleRows,
     otherPluginRows: otherPluginRows,
     parseStats: parseStats,
     parseDockerPs: parseDockerPs,

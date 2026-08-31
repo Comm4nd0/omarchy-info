@@ -35,13 +35,15 @@ to `~/.config/hypr/bindings.lua`:
 o.bind("SUPER + I", "OmarchyInfo", "omarchy-shell shell toggle marco.omarchy-info")
 ```
 
-Inside the open panel: `Esc` closes, `Tab`/`Shift-Tab` switches to the
-neighbouring plugin popouts, `r` forces a refresh.
+Inside the open panel: `Esc` closes (or backs out of settings), `Tab`/`Shift-Tab`
+switches to the neighbouring plugin popouts, `r` forces a refresh, `s` opens
+the panel settings.
 
 ## Cards
 
 | Card | Source | Extras |
 |---|---|---|
+| Quick settings | shell services + omarchy toggle flags | see below |
 | Network | `omarchy-network-status` | click header → full network popout |
 | Audio | Pipewire (live) | working volume slider; right-click mute |
 | Bluetooth | BlueZ (live) | connected device names |
@@ -57,6 +59,19 @@ neighbouring plugin popouts, `r` forces a refresh.
 
 Card headers with a `›` open the corresponding plugin's full popout.
 
+## Quick settings
+
+The Settings card is the toggle grid of a phone control center:
+
+- **Night light, Stay awake, Do not disturb** — wired to the shell's live
+  services, so the switches track state changed anywhere (bar indicator,
+  keybinding, another panel).
+- **Screensaver, Suspend in menu, Crash capture** — omarchy's flag-file
+  toggles (`omarchy toggle …`).
+- **Touchpad / Touchscreen** — shown only when the hardware exists.
+- **Theme / Next bg** — opens the theme switcher, or cycles the current
+  theme's background.
+
 ## Other plugins
 
 Below the cards, every bar plugin that isn't already covered by a card gets a
@@ -65,16 +80,23 @@ actually offering a popout are listed — no dead clicks.
 
 ## Settings
 
-Configure via the bar's widget settings UI, or inline in
-`~/.config/omarchy/shell.json`:
+Click the gear in the panel's top-right corner (or press `s`) to edit the
+panel from inside itself: toggle individual cards on/off, switch between
+masonry and grid layout, set the column count and width, and choose whether
+other bar plugins are listed. Changes apply immediately and persist to
+`~/.config/omarchy/shell.json`.
+
+The same keys can be set via the bar's widget settings UI or inline in
+`shell.json`:
 
 | Key | Default | Meaning |
 |---|---|---|
 | `cards` | `[]` (= all) | which cards to show |
+| `layoutMode` | `masonry` | `masonry` packs cards under the shortest column (no gaps); `grid` keeps rows aligned |
 | `showOtherPlugins` | `true` | list uncovered bar plugins |
 | `refreshIntervalSec` | `3` | polling cadence while open (stats/docker/network) |
 | `panelWidthPx` | `560` | dropdown width |
-| `columns` | `2` | card grid columns (1–3) |
+| `columns` | `2` | card columns (1–3) |
 
 Command-driven cards only poll while the panel is open; live cards (audio,
 battery, bluetooth, media) are event-driven and cost nothing.

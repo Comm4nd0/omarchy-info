@@ -31,6 +31,99 @@ test("cardSource maps every card id to a file", () => {
   assert.strictEqual(Model.cardSource("bogus"), "")
 })
 
+test("CARD_OPTIONS drives ALL_CARDS", () => {
+  assert.deepStrictEqual(Model.ALL_CARDS, Model.CARD_OPTIONS.map((o) => o.id))
+})
+
+test("cardShown: empty selection shows everything", () => {
+  assert.strictEqual(Model.cardShown([], "audio"), true)
+  assert.strictEqual(Model.cardShown(null, "audio"), true)
+  assert.strictEqual(Model.cardShown(["audio"], "audio"), true)
+  assert.strictEqual(Model.cardShown(["audio"], "stats"), false)
+})
+
+test("toggleCardSelection: first removal materializes the full list", () => {
+  const next = Model.toggleCardSelection([], "docker")
+  assert.deepStrictEqual(next, Model.ALL_CARDS.filter((c) => c !== "docker"))
+})
+
+test("toggleCardSelection: re-checking the full set normalizes to []", () => {
+  const withoutDocker = Model.ALL_CARDS.filter((c) => c !== "docker")
+  assert.deepStrictEqual(Model.toggleCardSelection(withoutDocker, "docker"), [])
+})
+
+test("toggleCardSelection: refuses to empty the selection, keeps custom order", () => {
+  assert.deepStrictEqual(Model.toggleCardSelection(["audio"], "audio"), ["audio"])
+  assert.deepStrictEqual(Model.toggleCardSelection(["stats", "audio"], "audio"), ["stats"])
+  assert.deepStrictEqual(Model.toggleCardSelection(["stats", "audio"], "network"), ["stats", "audio", "network"])
+  assert.deepStrictEqual(Model.toggleCardSelection(["audio"], "bogus"), ["audio"])
+})
+
+test("masonryLayout: cards drop into the shortest column", () => {
+  const res = Model.masonryLayout([100, 40, 30, 50], 2, 10)
+  assert.deepStrictEqual(res.positions, [
+    { column: 0, y: 0 },
+    { column: 1, y: 0 },
+    { column: 1, y: 50 },   // col1 at 50 < col0 at 110
+    { column: 1, y: 90 }    // col1 at 90 still shortest
+  ])
+  assert.strictEqual(res.height, 140)  // col1: 40+30+50 + 2 gutters
+})
+
+test("masonryLayout: single column stacks in order", () => {
+  const res = Model.masonryLayout([10, 20], 1, 5)
+  assert.deepStrictEqual(res.positions, [{ column: 0, y: 0 }, { column: 0, y: 15 }])
+  assert.strictEqual(res.height, 35)
+})
+
+test("gridLayout: rows aligned to the tallest card", () => {
+  const res = Model.gridLayout([100, 40, 30, 50], 2, 10)
+  assert.deepStrictEqual(res.positions, [
+    { column: 0, y: 0 },
+    { column: 1, y: 0 },
+    { column: 0, y: 110 },
+    { column: 1, y: 110 }
+  ])
+  assert.strictEqual(res.height, 160)
+})
+
+test("layout helpers: empty input", () => {
+  assert.deepStrictEqual(Model.masonryLayout([], 2, 10), { positions: [], height: 0 })
+  assert.deepStrictEqual(Model.gridLayout([], 2, 10), { positions: [], height: 0 })
+})
+
+test("flagToggleRows: off-flags invert into checked state", () => {
+  const rows = Model.flagToggleRows({
+    "screensaver-off": "1", "suspend-off": "0", "crash-capture-off": "0",
+    "touchpad-present": "0", "touchpad-disabled": "0",
+    "touchscreen-present": "0", "touchscreen-disabled": "0"
+  })
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r]))
+  assert.strictEqual(byKey.screensaver.checked, false, "flag present means disabled")
+  assert.strictEqual(byKey.suspend.checked, true)
+  assert.strictEqual(byKey["crash-capture"].checked, true)
+  assert.ok(byKey.screensaver.cmd.length > 0)
+})
+
+test("flagToggleRows: input devices only listed when present", () => {
+  const none = Model.flagToggleRows({
+    "screensaver-off": "0", "suspend-off": "0", "crash-capture-off": "0",
+    "touchpad-present": "0", "touchpad-disabled": "0"
+  })
+  assert.ok(!none.some((r) => r.key === "touchpad"))
+  const withPad = Model.flagToggleRows({
+    "screensaver-off": "0", "suspend-off": "0", "crash-capture-off": "0",
+    "touchpad-present": "1", "touchpad-disabled": "1"
+  })
+  const pad = withPad.find((r) => r.key === "touchpad")
+  assert.strictEqual(pad.checked, false, "disabled name file means off")
+})
+
+test("flagToggleRows: empty probe output yields no rows", () => {
+  assert.deepStrictEqual(Model.flagToggleRows({}), [])
+  assert.deepStrictEqual(Model.flagToggleRows(null), [])
+})
+
 const REGISTRY = {
   "omarchy.network": { kinds: ["bar-widget"], name: "Network", barWidget: { displayName: "Network", category: "System" } },
   "omarchy.clock": { kinds: ["bar-widget"], name: "Clock", barWidget: { displayName: "Clock", category: "Time" } },

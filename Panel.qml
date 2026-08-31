@@ -23,6 +23,23 @@ Panel {
   readonly property bool showOtherPlugins: setting("showOtherPlugins", true) === true
   readonly property int panelWidthPx: Math.max(380, Number(setting("panelWidthPx", 560)))
   readonly property int gridColumns: Math.max(1, Math.min(3, Number(setting("columns", 2))))
+  readonly property string layoutMode: setting("layoutMode", "masonry") === "grid" ? "grid" : "masonry"
+
+  // In-panel settings editor, toggled by the gear in the header.
+  property bool settingsOpen: false
+
+  // Merge changed values into this widget's inline shell.json entry. Applied
+  // locally first so the panel redraws on the click itself; the write comes
+  // back through the bar as the same value (inline settings changes patch
+  // running widgets in place, so the open panel survives).
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) if (existing !== "id") entry[existing] = root.settings[existing]
+    for (var key in values) entry[key] = values[key]
+    root.settings = entry
+    if (bar && bar.shell && typeof bar.shell.updateEntryInline === "function")
+      bar.shell.updateEntryInline(root.moduleName, entry)
+  }
 
   // ------------------------------------------------------------ capabilities
   readonly property bool hasBattery: {
@@ -45,6 +62,7 @@ Panel {
   property var agents: []
   property var layouts: []
   property var calendarDoc: ({})
+  property var toggleStates: ({})
 
   readonly property var mediaService: bar && bar.shell
     ? bar.shell.firstPartyServiceFor("omarchy.media") : null
@@ -150,6 +168,30 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.layouts = Model.parseProfiles(text) }
   }
 
+  // Quick-settings probe for the toggles the shell has no live service for:
+  // omarchy's "-off" flag files, plus input-device presence/disable state.
+  // Key/value lines, same shape as the network probe.
+  Process {
+    id: togglesProc
+    command: ["bash", "-c",
+      'T="$HOME/.local/state/omarchy/toggles"\n' +
+      'for f in screensaver-off suspend-off crash-capture-off; do\n' +
+      '  if [ -f "$T/$f" ]; then v=1; else v=0; fi\n' +
+      '  printf "%s\\t%s\\n" "$f" "$v"\n' +
+      'done\n' +
+      'for k in touchpad touchscreen; do\n' +
+      '  if n="$("omarchy-hw-$k" 2>/dev/null)" && [ -n "$n" ]; then p=1; else p=0; fi\n' +
+      '  printf "%s-present\\t%s\\n" "$k" "$p"\n' +
+      '  if [ -f "$T/hypr/$k-disabled-name" ]; then d=1; else d=0; fi\n' +
+      '  printf "%s-disabled\\t%s\\n" "$k" "$d"\n' +
+      'done']
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.toggleStates = Model.parseKeyValue(text) }
+  }
+
+  function refreshToggles() {
+    if (!togglesProc.running) togglesProc.running = true
+  }
+
   // The calendar sync timer rewrites this file every few minutes; watching it
   // is free and needs no polling at all.
   FileView {
@@ -178,6 +220,7 @@ Panel {
     var cards = root.enabledCards
     if (cards.indexOf("stats") !== -1 && !statsProc.running) statsProc.running = true
     if (cards.indexOf("network") !== -1 && !netProc.running) netProc.running = true
+    if (cards.indexOf("settings") !== -1) refreshToggles()
     if (root.wantsDocker && !dockerProc.running) dockerProc.running = true
   }
 
@@ -207,7 +250,10 @@ Panel {
     onTriggered: root.refreshSlow(false)
   }
 
-  onOpenedChanged: if (opened) { refresh(); refreshSlow(false); otherPlugins = computeOtherPlugins() }
+  onOpenedChanged: {
+    if (opened) { refresh(); refreshSlow(false); otherPlugins = computeOtherPlugins() }
+    else settingsOpen = false
+  }
   // Card availability can change while open (e.g. the docker probe failing
   // right after the first refresh) — keep the row list in sync so a plugin
   // whose card just vanished reappears as a row.
@@ -240,9 +286,12 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      onCloseRequested: root.close()
+      onCloseRequested: root.settingsOpen ? root.settingsOpen = false : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(t) { if (t === "r") { root.refresh(); root.refreshSlow(true) } }
+      onTextKey: function(t) {
+        if (t === "r") { root.refresh(); root.refreshSlow(true) }
+        else if (t === "s") root.settingsOpen = !root.settingsOpen
+      }
 
       Column {
         id: layoutColumn
@@ -251,23 +300,99 @@ Panel {
         anchors.top: parent.top
         spacing: Style.space(12)
 
-        Grid {
-          id: cardGrid
+        // Header: title on the left, the gear that flips between the cards
+        // and the panel's own settings editor on the right.
+        Item {
           width: parent.width
-          columns: root.gridColumns
-          columnSpacing: Style.space(10)
-          rowSpacing: Style.space(10)
+          implicitHeight: Math.max(headerTitle.implicitHeight, gearButton.implicitHeight)
 
+          PanelSectionHeader {
+            id: headerTitle
+            text: root.settingsOpen ? "PANEL SETTINGS" : "OMARCHY INFO"
+            foreground: root.bar ? root.bar.foreground : Color.foreground
+            fontFamily: root.bar ? root.bar.fontFamily : ""
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Text {
+            id: gearButton
+            text: root.settingsOpen ? "󰅖" : "󰒓"
+            color: root.bar ? root.bar.foreground : Color.foreground
+            opacity: gearMouse.containsMouse || root.settingsOpen ? 1.0 : 0.5
+            font.family: root.bar ? root.bar.fontFamily : ""
+            font.pixelSize: Style.font.bodySmall
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(2)
+            anchors.verticalCenter: parent.verticalCenter
+
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+
+            MouseArea {
+              id: gearMouse
+              anchors.fill: parent
+              anchors.margins: -Style.space(6)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.settingsOpen = !root.settingsOpen
+            }
+          }
+        }
+
+        // Card area: manual placement so masonry can close the vertical gaps
+        // a row-aligned grid leaves under short cards. The math lives in
+        // Model.js (masonryLayout/gridLayout); this item only assigns x/y and
+        // re-runs the layout when anything that affects it moves.
+        Item {
+          id: cardArea
+          width: parent.width
+          visible: !root.settingsOpen
+
+          readonly property real gutter: Style.space(10)
           readonly property real cellWidth:
-            (width - columnSpacing * (columns - 1)) / columns
+            (width - gutter * (root.gridColumns - 1)) / root.gridColumns
+
+          onWidthChanged: scheduleLayout()
+
+          function scheduleLayout() { layoutTimer.restart() }
+
+          function relayout() {
+            var items = []
+            for (var i = 0; i < children.length; i++) {
+              var it = children[i]
+              if (it && it.isCardCell === true && it.height > 0) items.push(it)
+            }
+            var heights = []
+            for (var j = 0; j < items.length; j++) heights.push(items[j].height)
+            var res = root.layoutMode === "grid"
+              ? Model.gridLayout(heights, root.gridColumns, gutter)
+              : Model.masonryLayout(heights, root.gridColumns, gutter)
+            for (var k = 0; k < items.length; k++) {
+              items[k].x = res.positions[k].column * (cellWidth + gutter)
+              items[k].y = res.positions[k].y
+            }
+            implicitHeight = res.height
+          }
+
+          Timer { id: layoutTimer; interval: 0; onTriggered: cardArea.relayout() }
+
+          Connections {
+            target: root
+            function onGridColumnsChanged() { cardArea.scheduleLayout() }
+            function onLayoutModeChanged() { cardArea.scheduleLayout() }
+          }
 
           Repeater {
             model: root.enabledCards
+            onItemAdded: function(index, item) { cardArea.scheduleLayout() }
+            onItemRemoved: function(index, item) { cardArea.scheduleLayout() }
             Loader {
               required property var modelData
-              width: cardGrid.cellWidth
+              readonly property bool isCardCell: true
+              width: cardArea.cellWidth
               height: item ? item.implicitHeight : 0
               source: Model.cardSource(modelData)
+              onHeightChanged: cardArea.scheduleLayout()
               onLoaded: {
                 item.panelRoot = root
                 item.cardId = modelData
@@ -276,13 +401,21 @@ Panel {
           }
         }
 
+        Loader {
+          width: parent.width
+          active: root.settingsOpen
+          visible: root.settingsOpen
+          source: "SettingsView.qml"
+          onLoaded: item.panelRoot = root
+        }
+
         PanelSeparator {
-          visible: root.showOtherPlugins && root.otherPlugins.length > 0
+          visible: !root.settingsOpen && root.showOtherPlugins && root.otherPlugins.length > 0
           foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
         PanelSectionHeader {
-          visible: root.showOtherPlugins && root.otherPlugins.length > 0
+          visible: !root.settingsOpen && root.showOtherPlugins && root.otherPlugins.length > 0
           text: "OTHER PLUGINS"
           foreground: root.bar ? root.bar.foreground : Color.foreground
           fontFamily: root.bar ? root.bar.fontFamily : ""
@@ -291,7 +424,7 @@ Panel {
         Column {
           width: parent.width
           spacing: Style.space(2)
-          visible: root.showOtherPlugins
+          visible: !root.settingsOpen && root.showOtherPlugins
 
           Repeater {
             model: root.otherPlugins

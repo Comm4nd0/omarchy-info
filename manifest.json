@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "marco.omarchy-info",
   "name": "OmarchyInfo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Marco Baldanza",
   "license": "MIT",
-  "description": "Control-center-style dropdown aggregating network, audio, battery, system stats, bluetooth, docker and media at a glance, plus quick access to every other bar plugin's popout.",
+  "description": "Control-center-style dropdown aggregating network, audio, battery, system stats, bluetooth, docker and media at a glance, with quick-settings toggles (night light, stay awake, do not disturb, and more) plus quick access to every other bar plugin's popout.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "Panel.qml" },
   "barWidget": {
@@ -19,7 +19,8 @@
       "showOtherPlugins": true,
       "refreshIntervalSec": 3,
       "panelWidthPx": 560,
-      "columns": 2
+      "columns": 2,
+      "layoutMode": "masonry"
     },
     "schema": [
       {
@@ -30,6 +31,7 @@
         "placeholderText": "Search cards...",
         "description": "Which rich cards to show. Empty shows every card that applies (battery hides itself on desktops, docker when docker is absent).",
         "options": [
+          { "value": "settings", "label": "Quick settings" },
           { "value": "network", "label": "Network" },
           { "value": "audio", "label": "Audio" },
           { "value": "bluetooth", "label": "Bluetooth" },
@@ -77,6 +79,14 @@
         "max": 3,
         "step": 1,
         "defaultValue": 2
+      },
+      {
+        "key": "layoutMode",
+        "type": "enum",
+        "label": "Card layout",
+        "options": ["masonry", "grid"],
+        "defaultValue": "masonry",
+        "description": "Masonry packs each card under the shortest column, closing the gaps a row-aligned grid leaves; grid keeps rows aligned."
       }
     ]
   }
