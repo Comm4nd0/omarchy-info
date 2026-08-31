@@ -26,11 +26,15 @@ Column {
       font.family: root.fontName
       font.pixelSize: Style.font.caption
       font.letterSpacing: 0.8
+      elide: Text.ElideRight
       anchors.left: parent.left
+      anchors.right: valueLabel.left
+      anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
     }
 
     Text {
+      id: valueLabel
       text: root.valueText
       color: root.fg
       font.family: root.fontName

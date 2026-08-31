@@ -95,6 +95,72 @@ test("parseKeyValue: tab-separated pairs", () => {
   assert.strictEqual(out["broken line"], undefined)
 })
 
+test("parseDelimitedJson: splits records, skips garbage", () => {
+  const out = Model.parseDelimitedJson('===REC\n{"id":"a"}\n===REC\nnot json\n===REC\n{"id":"b"}\n')
+  assert.deepStrictEqual(out.map((r) => r.id), ["a", "b"])
+  assert.deepStrictEqual(Model.parseDelimitedJson(""), [])
+})
+
+test("agentRows: worst limit and token sort", () => {
+  const rows = Model.agentRows([
+    { id: "claude", name: "Claude Code", tierLabel: "Max 20x", ready: true,
+      limits: [{ label: "Session (5-hour)", percent: 0.14 }, { label: "Weekly (7-day)", percent: 0.27 }],
+      todayTotalTokens: 49273902 },
+    { id: "codex", name: "Codex", limits: [], todayTotalTokens: 100 },
+    { bogus: true }
+  ])
+  assert.strictEqual(rows.length, 2)
+  assert.strictEqual(rows[0].id, "claude")
+  assert.strictEqual(rows[0].worstPercent, 0.27)
+  assert.strictEqual(rows[0].worstLabel, "Weekly (7-day)")
+  assert.strictEqual(rows[1].worstPercent, -1)
+})
+
+test("formatTokens", () => {
+  assert.strictEqual(Model.formatTokens(49273902), "49.3M")
+  assert.strictEqual(Model.formatTokens(950), "950")
+  assert.strictEqual(Model.formatTokens(1500), "1.5k")
+  assert.strictEqual(Model.formatTokens(0), "0")
+})
+
+test("parseProfiles: name, mtime, window count", () => {
+  const text = '===PROFILE\tStandard layout\t1788092553\n{"timestamp":1,"windows":[{},{},{}]}\n'
+    + '===PROFILE\tBroken\t0\nnot json\n'
+  const out = Model.parseProfiles(text)
+  assert.strictEqual(out.length, 2)
+  const std = out.find((p) => p.name === "Standard layout")
+  assert.strictEqual(std.windowCount, 3)
+  assert.strictEqual(std.savedAtMs, 1788092553000)
+  assert.strictEqual(out.find((p) => p.name === "Broken").windowCount, -1)
+})
+
+test("formatAge", () => {
+  const now = Date.now()
+  assert.strictEqual(Model.formatAge(now - 30000, now), "just now")
+  assert.strictEqual(Model.formatAge(now - 5 * 60000, now), "5m ago")
+  assert.strictEqual(Model.formatAge(now - 3 * 3600000, now), "3h ago")
+  assert.strictEqual(Model.formatAge(now - 49 * 3600000, now), "2d ago")
+  assert.strictEqual(Model.formatAge(0, now), "")
+})
+
+test("upcomingEvents: timed, future, deduped, sorted, capped", () => {
+  const now = Date.parse("2026-08-31T10:00:00+01:00")
+  const doc = { events: [
+    { id: "past", title: "Past", start: "2026-08-31T08:00:00+01:00", dateKey: "2026-08-31" },
+    { id: "allday", title: "Holiday", allDay: true, start: "2026-08-31T00:00:00+01:00", dateKey: "2026-08-31" },
+    { id: "wl", title: "Office", eventType: "workingLocation", start: "2026-08-31T11:00:00+01:00", dateKey: "2026-08-31" },
+    { id: "declined", title: "Nope", responseStatus: "declined", start: "2026-08-31T11:00:00+01:00", dateKey: "2026-08-31" },
+    { id: "multi", title: "Conf", start: "2026-08-31T12:00:00+01:00", dateKey: "2026-08-31" },
+    { id: "multi", title: "Conf", start: "2026-08-31T12:00:00+01:00", dateKey: "2026-09-01" },
+    { id: "b", title: "Later", start: "2026-08-31T11:30:00+01:00", dateKey: "2026-08-31" },
+    { id: "c", title: "Tomorrow", start: "2026-09-01T09:00:00+01:00", dateKey: "2026-09-01" },
+    { id: "d", title: "Next", start: "2026-09-02T09:00:00+01:00", dateKey: "2026-09-02" }
+  ] }
+  const out = Model.upcomingEvents(doc, now, 3)
+  assert.deepStrictEqual(out.map((e) => e.title), ["Later", "Conf", "Tomorrow"])
+  assert.deepStrictEqual(Model.upcomingEvents({}, now, 3), [])
+})
+
 test("clampPct bounds values", () => {
   assert.strictEqual(Model.clampPct(-5), 0)
   assert.strictEqual(Model.clampPct(150), 100)

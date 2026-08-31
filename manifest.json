@@ -36,7 +36,12 @@
           { "value": "battery", "label": "Battery & power" },
           { "value": "stats", "label": "CPU / RAM / Disk" },
           { "value": "docker", "label": "Docker containers" },
-          { "value": "media", "label": "Now playing" }
+          { "value": "media", "label": "Now playing" },
+          { "value": "weather", "label": "Weather" },
+          { "value": "calendar", "label": "Calendar" },
+          { "value": "agents", "label": "AI agents" },
+          { "value": "layouts", "label": "Workspace layouts" },
+          { "value": "plugins", "label": "Plugin manager" }
         ]
       },
       {

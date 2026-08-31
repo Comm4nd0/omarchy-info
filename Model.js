@@ -1,7 +1,8 @@
 // Pure JS logic for OmarchyInfo — no QML types so the whole file runs under
 // `node --test tests/` as well as inside the shell.
 
-var ALL_CARDS = ["network", "audio", "bluetooth", "battery", "stats", "docker", "media"]
+var ALL_CARDS = ["network", "audio", "bluetooth", "battery", "stats", "docker", "media",
+  "weather", "calendar", "agents", "layouts", "plugins"]
 
 var CARD_SOURCES = {
   network: "cards/NetworkCard.qml",
@@ -10,7 +11,12 @@ var CARD_SOURCES = {
   battery: "cards/BatteryCard.qml",
   stats: "cards/StatsCard.qml",
   docker: "cards/DockerCard.qml",
-  media: "cards/MediaCard.qml"
+  media: "cards/MediaCard.qml",
+  weather: "cards/WeatherCard.qml",
+  calendar: "cards/CalendarCard.qml",
+  agents: "cards/AgentsCard.qml",
+  layouts: "cards/LayoutsCard.qml",
+  plugins: "cards/PluginsCard.qml"
 }
 
 // Plugins already represented by a curated card. When the card is enabled the
@@ -22,7 +28,12 @@ var CARD_COVERAGE = {
   battery: ["omarchy.power"],
   stats: ["omarchy.monitor", "im0001gt.hw-tooltip"],
   docker: ["io.github.dicemans.docker-vms"],
-  media: []
+  media: [],
+  weather: ["omarchy.weather"],
+  calendar: ["tmn73.calendar", "omarchy.clock"],
+  agents: ["omarchy.agents"],
+  layouts: ["davedes.workspace-restorer"],
+  plugins: ["omaplug"]
 }
 
 function cardSource(cardId) {
@@ -135,6 +146,130 @@ function parseKeyValue(text) {
   return out
 }
 
+// Split a "===REC"-delimited stream of JSON documents into parsed objects,
+// dropping records that fail to parse.
+function parseDelimitedJson(text) {
+  var out = []
+  var chunks = String(text || "").split(/^===REC.*$/m)
+  for (var i = 0; i < chunks.length; i++) {
+    var chunk = chunks[i].trim()
+    if (chunk === "") continue
+    try {
+      var obj = JSON.parse(chunk)
+      if (obj && typeof obj === "object") out.push(obj)
+    } catch (e) { /* skip malformed record */ }
+  }
+  return out
+}
+
+// Agent usage records (~/.local/state/omarchy/agents/usage/*.json) into
+// compact rows for the agents card. `percent` in the records is 0..1.
+function agentRows(records) {
+  var rows = []
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i]
+    if (!r || !r.id) continue
+    var worst = null
+    var limits = Array.isArray(r.limits) ? r.limits : []
+    for (var j = 0; j < limits.length; j++) {
+      var l = limits[j]
+      if (!l || !isFinite(Number(l.percent))) continue
+      if (worst === null || Number(l.percent) > worst.percent)
+        worst = { percent: Number(l.percent), label: String(l.label || "") }
+    }
+    rows.push({
+      id: String(r.id),
+      name: String(r.name || r.id),
+      tierLabel: String(r.tierLabel || ""),
+      ready: r.ready === true,
+      worstPercent: worst ? Math.max(0, Math.min(1, worst.percent)) : -1,
+      worstLabel: worst ? worst.label : "",
+      todayTokens: isFinite(Number(r.todayTotalTokens)) ? Number(r.todayTotalTokens) : 0
+    })
+  }
+  rows.sort(function(a, b) { return b.todayTokens - a.todayTokens })
+  return rows
+}
+
+function formatTokens(n) {
+  n = Number(n)
+  if (!isFinite(n) || n <= 0) return "0"
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B"
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M"
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "k"
+  return String(Math.round(n))
+}
+
+// Workspace-restorer profiles from a stream of
+//   ===PROFILE\t<name>\t<mtime-epoch-seconds>
+// header lines each followed by the profile's JSON body.
+function parseProfiles(text) {
+  var out = []
+  var lines = String(text || "").split("\n")
+  var current = null
+  var body = []
+  function flush() {
+    if (!current) return
+    var windowCount = -1
+    try {
+      var doc = JSON.parse(body.join("\n"))
+      if (doc && Array.isArray(doc.windows)) windowCount = doc.windows.length
+    } catch (e) { /* count stays unknown */ }
+    out.push({ name: current.name, savedAtMs: current.savedAtMs, windowCount: windowCount })
+  }
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf("===PROFILE\t") === 0) {
+      flush()
+      var parts = lines[i].split("\t")
+      current = {
+        name: String(parts[1] || "unnamed"),
+        savedAtMs: isFinite(Number(parts[2])) ? Number(parts[2]) * 1000 : 0
+      }
+      body = []
+    } else if (current) {
+      body.push(lines[i])
+    }
+  }
+  flush()
+  out.sort(function(a, b) { return a.name.localeCompare(b.name) })
+  return out
+}
+
+function formatAge(ms, nowMs) {
+  if (!isFinite(ms) || ms <= 0) return ""
+  var d = Math.max(0, nowMs - ms)
+  var mins = Math.floor(d / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return mins + "m ago"
+  var hours = Math.floor(mins / 60)
+  if (hours < 24) return hours + "h ago"
+  return Math.floor(hours / 24) + "d ago"
+}
+
+// Upcoming timed events from the calendar-sync document
+// (~/.local/state/omarchy/calendar-events.json). Multi-day events are
+// pre-expanded per day and all-day entries carry no useful time, so mirror
+// the calendar plugin: timed events only, starting from now.
+function upcomingEvents(doc, nowMs, limit) {
+  var events = doc && Array.isArray(doc.events) ? doc.events : []
+  var out = []
+  var seen = {}
+  for (var i = 0; i < events.length; i++) {
+    var e = events[i]
+    if (!e || e.allDay === true) continue
+    if (e.eventType === "workingLocation") continue
+    if (e.responseStatus === "declined") continue
+    var startMs = Date.parse(e.start)
+    if (!isFinite(startMs) || isNaN(startMs)) continue
+    if (startMs < nowMs) continue
+    if (seen[e.id]) continue   // multi-day expansion shares ids
+    seen[e.id] = true
+    out.push({ title: String(e.title || "Untitled"), startMs: startMs, dateKey: String(e.dateKey || "") })
+  }
+  out.sort(function(a, b) { return a.startMs - b.startMs })
+  return out.slice(0, Math.max(1, limit || 3))
+}
+
 function clampPct(v) {
   var n = Number(v)
   if (!isFinite(n)) return 0
@@ -151,6 +286,12 @@ if (typeof module !== "undefined") {
     parseStats: parseStats,
     parseDockerPs: parseDockerPs,
     parseKeyValue: parseKeyValue,
+    parseDelimitedJson: parseDelimitedJson,
+    agentRows: agentRows,
+    formatTokens: formatTokens,
+    parseProfiles: parseProfiles,
+    formatAge: formatAge,
+    upcomingEvents: upcomingEvents,
     clampPct: clampPct
   }
 }

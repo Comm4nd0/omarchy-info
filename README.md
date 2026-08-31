@@ -49,6 +49,11 @@ neighbouring plugin popouts, `r` forces a refresh.
 | System | own `bin/omarchy-info-stats` | CPU, RAM, per-disk bars |
 | Docker | `docker ps` | hides itself when docker is absent |
 | Now playing | Omarchy media service | working play/pause |
+| Weather | `omarchy-weather-status` | fetched at most every 5 min |
+| Calendar | calendar-sync events file | next 3 timed events (needs tmn73.calendar sync) |
+| AI agents | omarchy agent usage records | per-agent limit meter + today's tokens |
+| Workspace layouts | workspace-restorer profiles | name, window count, age |
+| Plugins | live plugin registry | installed/enabled/community counts |
 
 Card headers with a `›` open the corresponding plugin's full popout.
 

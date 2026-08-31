@@ -40,6 +40,11 @@ Panel {
   property var stats: ({ cpu: -1, ram: null, disks: [] })
   property var netInfo: ({})
   property var containers: []
+  property string weatherStatus: ""
+  property real weatherFetchedMs: 0
+  property var agents: []
+  property var layouts: []
+  property var calendarDoc: ({})
 
   readonly property var mediaService: bar && bar.shell
     ? bar.shell.firstPartyServiceFor("omarchy.media") : null
@@ -114,6 +119,53 @@ Panel {
     onExited: function(code) { root.dockerAvailable = code === 0 }
   }
 
+  // Weather goes out to the network via omarchy's own helper, so it gets a
+  // stale-guard instead of the regular poll cadence.
+  Process {
+    id: weatherProc
+    command: ["omarchy-weather-status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var line = text.trim()
+        if (line !== "") { root.weatherStatus = line; root.weatherFetchedMs = Date.now() }
+      }
+    }
+  }
+
+  Process {
+    id: agentsProc
+    command: ["bash", "-c",
+      'for f in "$HOME"/.local/state/omarchy/agents/usage/*.json; do [ -f "$f" ] || continue; echo "===REC"; cat "$f"; done']
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.agents = Model.agentRows(Model.parseDelimitedJson(text))
+    }
+  }
+
+  Process {
+    id: layoutsProc
+    command: ["bash", "-c",
+      'for f in "$HOME"/.config/omarchy/workspace-restorer/*.json; do [ -f "$f" ] || continue; printf "===PROFILE\\t%s\\t%s\\n" "$(basename "$f" .json)" "$(stat -c %Y "$f")"; cat "$f"; echo; done']
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.layouts = Model.parseProfiles(text) }
+  }
+
+  // The calendar sync timer rewrites this file every few minutes; watching it
+  // is free and needs no polling at all.
+  FileView {
+    path: (Quickshell.env("HOME") || "") + "/.local/state/omarchy/calendar-events.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyCalendar(text())
+    onFileChanged: reload()
+    onLoadFailed: root.calendarDoc = {}
+  }
+
+  function applyCalendar(text) {
+    try { root.calendarDoc = JSON.parse(text) || {} }
+    catch (e) { root.calendarDoc = {} }
+  }
+
   // Whether the user's selection asks for the docker card at all (before the
   // availability probe). Polled on this rather than enabledCards so a stopped
   // daemon coming back re-surfaces the card without a shell restart.
@@ -129,6 +181,18 @@ Panel {
     if (root.wantsDocker && !dockerProc.running) dockerProc.running = true
   }
 
+  // Local file reads for cards whose sources change slowly. Weather only
+  // refetches when the last result has gone stale (it hits the network);
+  // pass force=true (the "r" key) to override.
+  function refreshSlow(force) {
+    var cards = root.enabledCards
+    if (cards.indexOf("agents") !== -1 && !agentsProc.running) agentsProc.running = true
+    if (cards.indexOf("layouts") !== -1 && !layoutsProc.running) layoutsProc.running = true
+    var weatherStale = Date.now() - root.weatherFetchedMs > 5 * 60 * 1000
+    if (cards.indexOf("weather") !== -1 && (force || weatherStale) && !weatherProc.running)
+      weatherProc.running = true
+  }
+
   Timer {
     interval: root.refreshMs
     running: root.opened
@@ -136,7 +200,14 @@ Panel {
     onTriggered: root.refresh()
   }
 
-  onOpenedChanged: if (opened) { refresh(); otherPlugins = computeOtherPlugins() }
+  Timer {
+    interval: 60 * 1000
+    running: root.opened
+    repeat: true
+    onTriggered: root.refreshSlow(false)
+  }
+
+  onOpenedChanged: if (opened) { refresh(); refreshSlow(false); otherPlugins = computeOtherPlugins() }
   // Card availability can change while open (e.g. the docker probe failing
   // right after the first refresh) — keep the row list in sync so a plugin
   // whose card just vanished reappears as a row.
@@ -171,7 +242,7 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(t) { if (t === "r") root.refresh() }
+      onTextKey: function(t) { if (t === "r") { root.refresh(); root.refreshSlow(true) } }
 
       Column {
         id: layoutColumn
