@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Emit system usage in a simple token format for the OmarchyInfo stats card:
+#   cpu <pct>
+#   ram <usedGiB> <totalGiB> <pct>
+#   disk <mount> <usedGiB> <totalGiB> <pct>
+# CPU is a two-sample delta over /proc/stat, so one run takes ~0.3s.
+set -euo pipefail
+
+read_cpu() {
+  # busy total, from the aggregate cpu line
+  local _cpu user nice system idle iowait irq softirq steal rest
+  read -r _cpu user nice system idle iowait irq softirq steal rest < /proc/stat
+  local total=$((user + nice + system + idle + iowait + irq + softirq + steal))
+  local busy=$((total - idle - iowait))
+  echo "$busy $total"
+}
+
+read -r busy1 total1 <<< "$(read_cpu)"
+sleep 0.3
+read -r busy2 total2 <<< "$(read_cpu)"
+dt=$((total2 - total1))
+if (( dt > 0 )); then
+  cpu=$(( (busy2 - busy1) * 100 / dt ))
+else
+  cpu=0
+fi
+echo "cpu $cpu"
+
+# RAM from /proc/meminfo: used = total - available (matches free(1))
+awk '/^MemTotal:/ {t=$2} /^MemAvailable:/ {a=$2} END {
+  if (t > 0) printf "ram %.1f %.1f %d\n", (t-a)/1048576, t/1048576, int((t-a)*100/t)
+}' /proc/meminfo
+
+# Disks: real filesystems only, deduped by device, GiB
+df -P -B1G -x tmpfs -x devtmpfs -x efivarfs 2>/dev/null | awk 'NR > 1 && $1 ~ /^\// && !seen[$1]++ {
+  gsub(/%/, "", $5)
+  printf "disk %s %d %d %d\n", $6, $3, $2, $5
+}'

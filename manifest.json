@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "marco.omarchy-info",
+  "name": "OmarchyInfo",
+  "version": "0.1.0",
+  "author": "Marco Baldanza",
+  "license": "MIT",
+  "description": "Control-center-style dropdown aggregating network, audio, battery, system stats, bluetooth, docker and media at a glance, plus quick access to every other bar plugin's popout.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Panel.qml" },
+  "barWidget": {
+    "displayName": "OmarchyInfo",
+    "description": "One dropdown with everything your bar knows.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "cards": [],
+      "showOtherPlugins": true,
+      "refreshIntervalSec": 3,
+      "panelWidthPx": 560,
+      "columns": 2
+    },
+    "schema": [
+      {
+        "key": "cards",
+        "type": "multiselect",
+        "label": "Cards",
+        "noSelectionText": "All cards",
+        "placeholderText": "Search cards...",
+        "description": "Which rich cards to show. Empty shows every card that applies (battery hides itself on desktops, docker when docker is absent).",
+        "options": [
+          { "value": "network", "label": "Network" },
+          { "value": "audio", "label": "Audio" },
+          { "value": "bluetooth", "label": "Bluetooth" },
+          { "value": "battery", "label": "Battery & power" },
+          { "value": "stats", "label": "CPU / RAM / Disk" },
+          { "value": "docker", "label": "Docker containers" },
+          { "value": "media", "label": "Now playing" }
+        ]
+      },
+      {
+        "key": "showOtherPlugins",
+        "type": "boolean",
+        "label": "List other bar plugins",
+        "defaultValue": true
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 1,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 3,
+        "description": "Polling cadence for command-driven cards (stats, docker, network details) while the panel is open. Live cards (audio, battery, bluetooth, media) update instantly regardless."
+      },
+      {
+        "key": "panelWidthPx",
+        "type": "integer",
+        "label": "Panel width (px)",
+        "min": 380,
+        "max": 900,
+        "step": 20,
+        "defaultValue": 560
+      },
+      {
+        "key": "columns",
+        "type": "integer",
+        "label": "Card columns",
+        "min": 1,
+        "max": 3,
+        "step": 1,
+        "defaultValue": 2
+      }
+    ]
+  }
+}
