@@ -19,7 +19,7 @@ a phone's control center does: swipe down (well, click once), see everything.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/YOUR-GITHUB/omarchy-info
+omarchy plugin add https://github.com/Comm4nd0/omarchy-info
 omarchy plugin enable marco.omarchy-info --section right
 ```
 
