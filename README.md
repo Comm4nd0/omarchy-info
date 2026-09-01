@@ -113,6 +113,17 @@ node --test tests/model.test.js
 omarchy plugin validate ~/.config/omarchy/plugins/marco.omarchy-info
 ```
 
+## Uninstall
+
+```bash
+omarchy plugin remove marco.omarchy-info
+```
+
+If you added the keybinding, also drop the `OmarchyInfo` line from
+`~/.config/hypr/bindings.lua`. The panel's saved settings live under this
+widget's entry in `~/.config/omarchy/shell.json` if you want to clear those
+too.
+
 ## License
 
 MIT
