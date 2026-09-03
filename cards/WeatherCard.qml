@@ -14,6 +14,7 @@ InfoCard {
   Text {
     width: parent.width
     text: card.parts.length > 1 ? card.parts.slice(1).join("·").trim() : (card.status || "Fetching…")
+    textFormat: Text.PlainText
     color: card.fg
     font.family: card.fontName
     font.pixelSize: Style.font.bodySmall
@@ -24,6 +25,7 @@ InfoCard {
     width: parent.width
     visible: card.parts.length > 1
     text: card.parts[0].trim()
+    textFormat: Text.PlainText
     color: card.fg
     opacity: 0.6
     font.family: card.fontName

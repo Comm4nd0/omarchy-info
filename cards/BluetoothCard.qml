@@ -40,6 +40,7 @@ InfoCard {
         names.push(card.connectedDevices[i].name || card.connectedDevices[i].address)
       return names.join(", ")
     }
+    textFormat: Text.PlainText
     color: card.fg
     opacity: 0.6
     font.family: card.fontName

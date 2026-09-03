@@ -49,6 +49,7 @@ InfoCard {
       Text {
         id: titleText
         text: modelData.title
+        textFormat: Text.PlainText
         color: card.fg
         font.family: card.fontName
         font.pixelSize: Style.font.caption

@@ -17,6 +17,7 @@ InfoCard {
     width: parent.width
     text: !card.connected ? "Disconnected"
       : (card.wifi ? (card.info.ssid || card.info.iface) : (card.info.iface || ""))
+    textFormat: Text.PlainText
     color: card.fg
     font.family: card.fontName
     font.pixelSize: Style.font.bodySmall
@@ -34,6 +35,7 @@ InfoCard {
       if (card.info.internet_ping_ms) bits.push(Math.round(Number(card.info.internet_ping_ms)) + " ms")
       return bits.join("  ·  ")
     }
+    textFormat: Text.PlainText
     color: card.fg
     opacity: 0.6
     font.family: card.fontName

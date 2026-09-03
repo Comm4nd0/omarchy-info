@@ -339,6 +339,7 @@ Panel {
           Text {
             visible: !root.settingsOpen && root.shortcutHint !== ""
             text: root.shortcutHint
+            textFormat: Text.PlainText
             color: root.bar ? root.bar.foreground : Color.foreground
             opacity: 0.45
             font.family: root.bar ? root.bar.fontFamily : ""
@@ -476,6 +477,7 @@ Panel {
               Text {
                 id: rowName
                 text: pluginRow.modelData.displayName
+                textFormat: Text.PlainText
                 color: pluginRow.rowFg
                 font.family: root.bar ? root.bar.fontFamily : ""
                 font.pixelSize: Style.font.bodySmall
@@ -491,6 +493,7 @@ Panel {
                 id: rowCategory
                 text: pluginRow.modelData.category !== ""
                   ? pluginRow.modelData.category + "  ›" : "›"
+                textFormat: Text.PlainText
                 color: pluginRow.rowFg
                 opacity: rowMouse.containsMouse ? 0.9 : 0.45
                 font.family: root.bar ? root.bar.fontFamily : ""

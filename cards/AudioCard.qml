@@ -19,6 +19,7 @@ InfoCard {
   Text {
     width: parent.width
     text: card.sink ? (card.sink.description || card.sink.name || "Output") : "No output device"
+    textFormat: Text.PlainText
     color: card.fg
     opacity: 0.75
     font.family: card.fontName

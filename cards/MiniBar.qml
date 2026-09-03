@@ -21,6 +21,7 @@ Column {
     Text {
       id: labelText
       text: root.label
+      textFormat: Text.PlainText
       color: root.fg
       opacity: 0.6
       font.family: root.fontName
@@ -36,6 +37,7 @@ Column {
     Text {
       id: valueLabel
       text: root.valueText
+      textFormat: Text.PlainText
       color: root.fg
       font.family: root.fontName
       font.pixelSize: Style.font.caption

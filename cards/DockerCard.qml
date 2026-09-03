@@ -47,6 +47,7 @@ InfoCard {
       Text {
         id: nameText
         text: modelData.name
+        textFormat: Text.PlainText
         color: card.fg
         opacity: modelData.state === "running" ? 0.85 : 0.5
         font.family: card.fontName

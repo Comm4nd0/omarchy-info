@@ -30,6 +30,7 @@ InfoCard {
       Text {
         width: parent.width
         text: card.hasMedia ? (card.svc.title || "Unknown title") : "Nothing playing"
+        textFormat: Text.PlainText
         color: card.fg
         font.family: card.fontName
         font.pixelSize: Style.font.bodySmall
@@ -40,6 +41,7 @@ InfoCard {
         width: parent.width
         visible: card.hasMedia && card.svc.artist !== ""
         text: card.hasMedia ? card.svc.artist : ""
+        textFormat: Text.PlainText
         color: card.fg
         opacity: 0.6
         font.family: card.fontName
